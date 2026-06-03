@@ -13,11 +13,23 @@ class RobotState:
         self._lock = threading.Lock()
         self._telem = None
         self._ts = 0.0
+        self._last_seq = None
+        self._drops = 0          # telemetry frames lost (seq gaps), counted per-frame
 
     def update(self, telem):
         with self._lock:
+            s = telem["seq"]
+            if self._last_seq is not None:
+                gap = (s - self._last_seq - 1) & 0xFFFF
+                if 0 < gap < 1000:          # ignore wrap/resync glitches
+                    self._drops += gap
+            self._last_seq = s
             self._telem = telem
             self._ts = time.monotonic()
+
+    def dropped(self):
+        with self._lock:
+            return self._drops
 
     def latest(self):
         """Return (telem_dict_copy_or_None, monotonic_timestamp)."""
