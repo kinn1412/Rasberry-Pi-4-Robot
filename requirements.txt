@@ -1,0 +1,32 @@
+# probot_pi runtime dependencies — Raspberry Pi (Python 3.11+).
+# Keep in sync with the modules under probot_pi/. Installed by install.sh into .venv.
+
+# --- Serial link to the ESP32 (UART2, 921600 8N1) ---------------------------
+# Raw byte transport only. COBS framing + CRC16-CCITT are implemented in pure
+# Python (hal/serial_link.py) so they match the ESP firmware byte-for-byte;
+# that is why there is intentionally NO cobs/crcmod dependency here.
+pyserial>=3.5
+
+# --- Fuzzy inference: scikit-fuzzy (mandated by the project spec) ------------
+# 2-block Mamdani via skfuzzy.control (Antecedent/Consequent/Rule/ControlSystem),
+# min-max inference + centroid defuzz. >=0.5.0 is required for numpy>=1.24
+# compatibility (older skfuzzy used the removed np.float). scipy + networkx are
+# transitive deps of skfuzzy; pinned explicitly so install is deterministic.
+scikit-fuzzy>=0.5.0
+scipy>=1.10
+networkx>=3.0
+numpy>=1.24,<3
+
+# --- Offline analysis / plots (Phase 8 step 5: validate vs CSV log) ----------
+matplotlib>=3.6
+
+# --- Dashboard: Flask + WebSocket telemetry / commanding (Phase 10) ----------
+# Flask-SocketIO is run in async_mode='threading' (no eventlet/gevent — those
+# are fragile on current Raspberry Pi OS Python). simple-websocket supplies the
+# WebSocket transport for that mode.
+Flask>=3.0
+Flask-SocketIO>=5.3
+simple-websocket>=1.0
+
+# --- Config files -----------------------------------------------------------
+PyYAML>=6.0
