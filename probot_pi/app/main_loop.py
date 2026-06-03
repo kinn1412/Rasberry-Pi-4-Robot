@@ -13,12 +13,13 @@ from probot_pi.control.supervisor import Supervisor
 
 class MainLoop:
     def __init__(self, link, state, command_source, hz=P.COMM_LOOP_HZ,
-                 fuzzy_enabled=True, logger=None, verbose=True, print_hz=2.0):
+                 fuzzy_enabled=True, logger=None, verbose=True, print_hz=2.0,
+                 backend="lut"):
         self.link = link
         self.state = state
         self.command = command_source        # callable() -> (v_cmd, w_cmd, mode)
         self.dt = 1.0 / hz
-        self.sup = Supervisor(self.dt, fuzzy_enabled=fuzzy_enabled)
+        self.sup = Supervisor(self.dt, fuzzy_enabled=fuzzy_enabled, backend=backend)
         self.logger = logger
         self.verbose = verbose
         self.seq = 0

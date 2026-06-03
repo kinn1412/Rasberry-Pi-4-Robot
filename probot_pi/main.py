@@ -26,6 +26,8 @@ def _parse_args(argv):
     ap.add_argument("--v", type=float, default=0.0, help="commanded body speed v (m/s)")
     ap.add_argument("--w", type=float, default=0.0, help="commanded body yaw rate (rad/s)")
     ap.add_argument("--no-fuzzy", action="store_true", help="pass-through (PID-only baseline)")
+    ap.add_argument("--no-lut", action="store_true",
+                    help="use exact skfuzzy each tick instead of the precomputed LUT (slow)")
     ap.add_argument("--sim", action="store_true", help="offline plant, no hardware")
     ap.add_argument("--log", default=None, help="CSV log path")
     ap.add_argument("--duration", type=float, default=0.0, help="auto-stop after N s (0=run forever)")
@@ -72,7 +74,8 @@ def main(argv=None):
     logger = CsvLogger(args.log) if args.log else None
     command = lambda: (args.v, args.w, P.MODE_RUN)
     loop = MainLoop(link, state, command, hz=args.rate,
-                    fuzzy_enabled=not args.no_fuzzy, logger=logger, verbose=not args.quiet)
+                    fuzzy_enabled=not args.no_fuzzy, logger=logger, verbose=not args.quiet,
+                    backend="skfuzzy" if args.no_lut else "lut")
 
     print(f"probot_pi up: link={src}  fuzzy={'OFF' if args.no_fuzzy else 'ON'}  "
           f"rate={args.rate}Hz  cmd(v={args.v}, w={args.w})")

@@ -32,9 +32,9 @@ def _five_mf(var, span):
 
 def _build():
     E, Rr, D = P.YAW_EPSI_RANGE, P.YAW_RERR_RANGE, P.YAW_DW_MAX
-    e_psi = ctrl.Antecedent(np.linspace(-E, E, 201), "e_psi")
-    r_err = ctrl.Antecedent(np.linspace(-Rr, Rr, 201), "r_err")
-    dw = ctrl.Consequent(np.linspace(-D, D, 201), "dw_yaw")
+    e_psi = ctrl.Antecedent(np.linspace(-E, E, 101), "e_psi")
+    r_err = ctrl.Antecedent(np.linspace(-Rr, Rr, 101), "r_err")
+    dw = ctrl.Consequent(np.linspace(-D, D, 101), "dw_yaw")
 
     _five_mf(e_psi, E)
     _five_mf(r_err, Rr)

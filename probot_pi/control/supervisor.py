@@ -16,8 +16,6 @@ import math
 
 from probot_pi.services import kinematics as kin
 from probot_pi.services.expected import SlipEstimator, expected_yaw_rate
-from probot_pi.control.fuzzy_yaw import YawFuzzy
-from probot_pi.control.fuzzy_traction import TractionFuzzy
 
 
 def _wrap(angle_rad):
@@ -26,14 +24,31 @@ def _wrap(angle_rad):
 
 
 class Supervisor:
-    def __init__(self, dt, fuzzy_enabled=True):
+    def __init__(self, dt, fuzzy_enabled=True, backend="lut"):
+        """backend: 'lut' (precomputed, real-time) or 'skfuzzy' (exact, slow)."""
         self.dt = dt
         self.fuzzy_enabled = fuzzy_enabled
-        self.yaw = YawFuzzy()
-        self.trac = TractionFuzzy()
+        self.backend = backend
         self.slip = SlipEstimator()
         self.psi_ref = 0.0      # integrated reference heading (rad)
         self.last = {}
+        self._yaw_compute = None
+        self._trac_compute = None
+        if fuzzy_enabled:
+            self._init_blocks(backend)
+
+    def _init_blocks(self, backend):
+        if backend == "lut":
+            from probot_pi.control.fuzzy_lut import build_yaw_lut, build_traction_lut
+            self._yaw_compute = build_yaw_lut().at
+            self._trac_compute = build_traction_lut().at
+        elif backend == "skfuzzy":
+            from probot_pi.control.fuzzy_yaw import YawFuzzy
+            from probot_pi.control.fuzzy_traction import TractionFuzzy
+            self._yaw_compute = YawFuzzy().compute
+            self._trac_compute = TractionFuzzy().compute
+        else:
+            raise ValueError(f"unknown fuzzy backend: {backend!r}")
 
     def reset(self):
         self.psi_ref = 0.0
@@ -55,8 +70,8 @@ class Supervisor:
             telem["omega_meas_l"], telem["omega_meas_r"], telem["yaw_rate"], w_cmd)
 
         if self.fuzzy_enabled:
-            dw_yaw = self.yaw.compute(e_psi_deg, r_err_dps)        # rad/s
-            lam = self.trac.compute(sigma_err, abs(r_err_dps))     # [0.4,1]
+            dw_yaw = self._yaw_compute(e_psi_deg, r_err_dps)       # rad/s
+            lam = self._trac_compute(sigma_err, abs(r_err_dps))    # [0.4,1]
         else:
             dw_yaw, lam = 0.0, 1.0
 
