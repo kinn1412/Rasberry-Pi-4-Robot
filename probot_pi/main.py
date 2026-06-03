@@ -29,6 +29,7 @@ def _parse_args(argv):
     ap.add_argument("--sim", action="store_true", help="offline plant, no hardware")
     ap.add_argument("--log", default=None, help="CSV log path")
     ap.add_argument("--duration", type=float, default=0.0, help="auto-stop after N s (0=run forever)")
+    ap.add_argument("--quiet", action="store_true", help="suppress the ~2 Hz status line")
     # read-only link verification (Phase 7)
     ap.add_argument("--monitor", action="store_true",
                     help="read-only link check: IDLE heartbeats + telemetry, NO motion")
@@ -71,7 +72,7 @@ def main(argv=None):
     logger = CsvLogger(args.log) if args.log else None
     command = lambda: (args.v, args.w, P.MODE_RUN)
     loop = MainLoop(link, state, command, hz=args.rate,
-                    fuzzy_enabled=not args.no_fuzzy, logger=logger)
+                    fuzzy_enabled=not args.no_fuzzy, logger=logger, verbose=not args.quiet)
 
     print(f"probot_pi up: link={src}  fuzzy={'OFF' if args.no_fuzzy else 'ON'}  "
           f"rate={args.rate}Hz  cmd(v={args.v}, w={args.w})")
