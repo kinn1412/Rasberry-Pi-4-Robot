@@ -40,6 +40,11 @@ def _parse_args(argv):
                     help="read-only link check: IDLE heartbeats + telemetry, NO motion")
     ap.add_argument("--no-heartbeat", action="store_true",
                     help="with --monitor: listen passively, do not send heartbeats")
+    # web dashboard (Phase 10): control + tuning + demos from the browser
+    ap.add_argument("--dashboard", action="store_true",
+                    help="serve the Flask dashboard (control/tuning/demos) instead of a fixed command")
+    ap.add_argument("--host", default="0.0.0.0", help="dashboard bind address")
+    ap.add_argument("--port-http", type=int, default=8000, help="dashboard TCP port")
     return ap.parse_args(argv)
 
 
@@ -73,6 +78,38 @@ def main(argv=None):
 
     from probot_pi.app.main_loop import MainLoop
     from probot_pi.app.logger import CsvLogger
+
+    if args.dashboard:
+        from probot_pi.app.control_state import ControlState
+        from probot_pi.app.web import make_app
+        control = ControlState(hz=args.rate)
+        control.set_fuzzy(not args.no_fuzzy)
+        logger = CsvLogger(args.log) if args.log else None
+        # fuzzy_enabled=True so the blocks/LUT are built and the ON/OFF toggle works;
+        # the live ON/OFF state then comes from ControlState via tuning_source.
+        loop = MainLoop(link, state, control.get_command, hz=args.rate,
+                        fuzzy_enabled=True, logger=logger, verbose=False,
+                        backend="skfuzzy" if args.no_lut else "lut",
+                        tuning_source=control.get_tuning,
+                        snapshot_sink=control.set_loop_snapshot)
+        threading.Thread(target=loop.run, daemon=True).start()
+        app = make_app(control)
+        print(f"probot_pi dashboard:  http://{args.host}:{args.port_http}   (link={src})")
+        try:
+            app.run(host=args.host, port=args.port_http, threaded=True, use_reloader=False)
+        finally:
+            loop.stop()
+            try:
+                for _ in range(5):
+                    link.send_cmd(0.0, 0.0, P.MODE_IDLE, 0)
+                    time.sleep(0.01)
+            except Exception:
+                pass
+            link.stop()
+            if logger:
+                logger.close()
+            print("dashboard stopped (motors commanded IDLE).")
+        return
 
     logger = CsvLogger(args.log) if args.log else None
 

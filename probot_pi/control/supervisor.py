@@ -14,8 +14,12 @@ inverse-kinematics setpoints — the PID-only baseline for the demo toggle.
 """
 import math
 
+from probot_pi.bsp import params as P
 from probot_pi.services import kinematics as kin
 from probot_pi.services.expected import SlipEstimator, expected_yaw_rate
+
+_DW_CLAMP = 2.0 * P.YAW_DW_MAX   # bound on the gained yaw bias (rad/s)
+_LAM_FLOOR = 0.2                 # never cut traction below this
 
 
 def _wrap(angle_rad):
@@ -30,6 +34,9 @@ class Supervisor:
         self.fuzzy_enabled = fuzzy_enabled
         self.backend = backend
         self.slip = SlipEstimator()
+        # live runtime gains (tunable from the dashboard, outside the LUT)
+        self.k_yaw = 1.0
+        self.k_trac = 1.0
         # Reference heading (rad). None until the first telemetry sample, then
         # latched to the measured yaw so e_psi starts at 0 — otherwise a nonzero
         # initial IMU heading reads as a phantom heading error and injects a
@@ -76,9 +83,12 @@ class Supervisor:
         sigma_err = self.slip.sigma_err(
             telem["omega_meas_l"], telem["omega_meas_r"], telem["yaw_rate"], w_cmd)
 
-        if self.fuzzy_enabled:
+        if self.fuzzy_enabled and self._yaw_compute is not None:
             dw_yaw = self._yaw_compute(e_psi_deg, r_err_dps)       # rad/s
             lam = self._trac_compute(sigma_err, abs(r_err_dps))    # [0.4,1]
+            # apply live gains (outside the LUT so they need no rebuild)
+            dw_yaw = max(-_DW_CLAMP, min(_DW_CLAMP, dw_yaw * self.k_yaw))
+            lam = max(_LAM_FLOOR, min(1.0, 1.0 - self.k_trac * (1.0 - lam)))
         else:
             dw_yaw, lam = 0.0, 1.0
 
