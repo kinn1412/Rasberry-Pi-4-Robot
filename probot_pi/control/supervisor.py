@@ -30,7 +30,11 @@ class Supervisor:
         self.fuzzy_enabled = fuzzy_enabled
         self.backend = backend
         self.slip = SlipEstimator()
-        self.psi_ref = 0.0      # integrated reference heading (rad)
+        # Reference heading (rad). None until the first telemetry sample, then
+        # latched to the measured yaw so e_psi starts at 0 — otherwise a nonzero
+        # initial IMU heading reads as a phantom heading error and injects a
+        # constant yaw bias (a bug the sim hid because its yaw starts at 0).
+        self.psi_ref = None
         self.last = {}
         self._yaw_compute = None
         self._trac_compute = None
@@ -51,14 +55,17 @@ class Supervisor:
             raise ValueError(f"unknown fuzzy backend: {backend!r}")
 
     def reset(self):
-        self.psi_ref = 0.0
+        self.psi_ref = None     # re-latch to the measured yaw on the next step
 
     def step(self, v_cmd, w_cmd, telem):
         """v_cmd (m/s), w_cmd (rad/s), telem dict -> (wl_ref, wr_ref, debug)."""
         we_l, we_r = kin.inverse(v_cmd, w_cmd)
 
-        # heading hold: ψ_ref tracks the commanded yaw rate, so an intentional
-        # turn keeps e_psi ~ 0 and is not "corrected" against.
+        # heading hold: ψ_ref latches to the current yaw on the first step, then
+        # tracks the commanded yaw rate, so an intentional turn keeps e_psi ~ 0
+        # and is not "corrected" against.
+        if self.psi_ref is None:
+            self.psi_ref = telem["yaw"]
         self.psi_ref += w_cmd * self.dt
         e_psi = _wrap(self.psi_ref - telem["yaw"])             # rad
         e_psi_deg = math.degrees(e_psi)
