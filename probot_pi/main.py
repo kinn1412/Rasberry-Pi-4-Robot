@@ -13,6 +13,7 @@ before scikit-fuzzy is installed.
 import argparse
 import signal
 import threading
+import time
 
 from probot_pi.bsp import params as P
 from probot_pi.hal.robot_state import RobotState
@@ -25,6 +26,8 @@ def _parse_args(argv):
     ap.add_argument("--rate", type=int, default=P.COMM_LOOP_HZ, help="supervisor loop Hz")
     ap.add_argument("--v", type=float, default=0.0, help="commanded body speed v (m/s)")
     ap.add_argument("--w", type=float, default=0.0, help="commanded body yaw rate (rad/s)")
+    ap.add_argument("--ramp", type=float, default=1.0,
+                    help="soft-start: ramp v,w from 0 to target over N s (0=instant step)")
     ap.add_argument("--no-fuzzy", action="store_true", help="pass-through (PID-only baseline)")
     ap.add_argument("--no-lut", action="store_true",
                     help="use exact skfuzzy each tick instead of the precomputed LUT (slow)")
@@ -72,21 +75,36 @@ def main(argv=None):
     from probot_pi.app.logger import CsvLogger
 
     logger = CsvLogger(args.log) if args.log else None
-    command = lambda: (args.v, args.w, P.MODE_RUN)
+
+    run_t0 = [0.0]   # set after the (possibly slow) LUT build, so ramp starts at run
+
+    def command():
+        frac = 1.0 if args.ramp <= 0 else min(1.0, (time.monotonic() - run_t0[0]) / args.ramp)
+        return (args.v * frac, args.w * frac, P.MODE_RUN)
+
     loop = MainLoop(link, state, command, hz=args.rate,
                     fuzzy_enabled=not args.no_fuzzy, logger=logger, verbose=not args.quiet,
                     backend="skfuzzy" if args.no_lut else "lut")
 
     print(f"probot_pi up: link={src}  fuzzy={'OFF' if args.no_fuzzy else 'ON'}  "
-          f"rate={args.rate}Hz  cmd(v={args.v}, w={args.w})")
+          f"rate={args.rate}Hz  cmd(v={args.v}, w={args.w})  ramp={args.ramp}s")
+    run_t0[0] = time.monotonic()
     _wire_stop(loop, args)
     try:
         loop.run()
     finally:
+        # graceful stop: command IDLE a few times so the ESP FSM drops to IDLE
+        # immediately, rather than waiting for the 200 ms command watchdog.
+        try:
+            for _ in range(5):
+                link.send_cmd(0.0, 0.0, P.MODE_IDLE, 0)
+                time.sleep(0.01)
+        except Exception:
+            pass
         link.stop()
         if logger:
             logger.close()
-        print(f"stopped. link stats: {link.stats}")
+        print(f"stopped (motors commanded IDLE). link stats: {link.stats}")
 
 
 def _wire_stop(loop, args):
